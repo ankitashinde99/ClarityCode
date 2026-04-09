@@ -1,0 +1,316 @@
+mport pandas as pd
+ 
+# ─────────────────────────────────────────────────────────────
+# STEP 4C — Missing Add-on Code Detector
+#
+# Add-on codes are EXTRA codes that attach to a primary visit
+# code when certain conditions are met. They are separate
+# billable services — meaning money left on the table every
+# time they are missed.
+#
+# This script checks 4 add-on code opportunities:
+#
+#   99490  Chronic Care Management — for patients with 2+
+#          chronic conditions. $62 per month per patient.
+#
+#   99484  Behavioral Health Integration — when BH services
+#          are delivered alongside primary care. $45 per visit.
+#
+#   G2211  Complex Primary Care Add-on — new 2024 code for
+#          visits involving complex/ongoing care. $16 per visit.
+#
+#   90833  Psychotherapy Add-on — when a psychiatrist does
+#          BOTH medication management AND therapy in one visit.
+#          $65 per visit.
+# ─────────────────────────────────────────────────────────────
+ 
+# ── Load the file ─────────────────────────────────────────────
+df = pd.read_excel("ehr_raw_data.xlsx",
+                   sheet_name="Raw Visit Data")
+ 
+print("File loaded —", len(df), "visits\n")
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# REFERENCE DATA
+# What each add-on code pays and what triggers it
+# ─────────────────────────────────────────────────────────────
+ 
+ADDON_RATES = {
+    "99490": 62,   # CCM
+    "99484": 45,   # BHI
+    "G2211": 16,   # Complex primary care
+    "90833": 65,   # Psychotherapy add-on
+}
+ 
+# These are the ICD-10 codes that indicate a chronic condition
+# If a visit has 2+ of these, the patient likely qualifies for CCM
+CHRONIC_CONDITIONS = [
+    "I10",    # Hypertension
+    "E11.9",  # Type 2 diabetes
+    "E78.5",  # Hyperlipidemia
+    "E66.9",  # Obesity
+    "J44.1",  # COPD
+    "E03.9",  # Hypothyroidism
+    "I25.10", # Atherosclerotic heart disease
+    "F32.1",  # Major depressive disorder
+    "F41.1",  # Generalized anxiety disorder
+    "F33.0",  # Recurrent depressive disorder
+    "F31.9",  # Bipolar disorder
+    "K21.0",  # GERD
+]
+ 
+# Primary care E&M codes — visits where G2211 could apply
+PRIMARY_EM_CODES = ["99202","99203","99204","99205",
+                    "99212","99213","99214","99215"]
+ 
+# Psychiatry medication management codes — visits where
+# 90833 add-on applies if therapy was also done same visit
+PSYCH_MED_CODES = ["99212","99213","99214","99215"]
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# HELPER: Check if a visit already has an add-on code submitted
+# ─────────────────────────────────────────────────────────────
+# NOTE: In real EHR data, multiple CPT codes per visit would
+# appear as separate rows or in additional columns.
+# In this dataset, we treat each row as one submitted code.
+# We check if the submitted code IS the add-on — if a provider
+# submitted 99490 as the primary code, they were billing CCM
+# correctly. We flag visits where they SHOULD have added it
+# but submitted only the primary E&M code instead.
+ 
+all_submitted = set(df["CPT_Code_Submitted"].unique())
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# CHECK 1 — Missing CCM (99490)
+# Who: Primary Care patients with 2+ chronic conditions
+# Rule: If primary + secondary diagnosis are BOTH chronic,
+#       the visit likely qualifies for CCM billing
+# ─────────────────────────────────────────────────────────────
+ 
+def qualifies_for_ccm(row):
+    """Returns True if visit has 2+ chronic condition diagnoses."""
+    dx1 = str(row.get("Primary_ICD10_Code",   ""))
+    dx2 = str(row.get("Secondary_ICD10_Code", ""))
+    dx3 = str(row.get("Tertiary_ICD10_Code",  ""))
+ 
+    chronic_count = sum([
+        dx1 in CHRONIC_CONDITIONS,
+        dx2 in CHRONIC_CONDITIONS,
+        dx3 in CHRONIC_CONDITIONS,
+    ])
+    return chronic_count >= 2
+ 
+pc = df[df["Service_Line"] == "Primary Care"].copy()
+pc["Qualifies_CCM"]     = pc.apply(qualifies_for_ccm, axis=1)
+pc["CCM_Was_Submitted"] = pc["CPT_Code_Submitted"] == "99490"
+pc["CCM_Missing"]       = pc["Qualifies_CCM"] & ~pc["CCM_Was_Submitted"]
+ 
+ccm_missing = pc[pc["CCM_Missing"]].copy()
+ccm_missing["Addon_Code"]     = "99490"
+ccm_missing["Addon_Name"]     = "Chronic Care Management"
+ccm_missing["Potential_Revenue"] = ADDON_RATES["99490"]
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# CHECK 2 — Missing BHI (99484)
+# Who: Primary Care visits where behavioral health diagnosis
+#      appears (depression, anxiety, etc.)
+# Rule: When a PCP manages a BH condition alongside medical
+#       care, 99484 can be billed monthly
+# ─────────────────────────────────────────────────────────────
+ 
+BH_ICD10_CODES = [
+    "F32.1","F41.1","F33.0","F43.10","F31.9",
+    "F10.20","F40.10","F34.1","F43.22","F60.3",
+]
+ 
+def qualifies_for_bhi(row):
+    """Returns True if a primary care visit has a BH diagnosis."""
+    dx1 = str(row.get("Primary_ICD10_Code",   ""))
+    dx2 = str(row.get("Secondary_ICD10_Code", ""))
+    dx3 = str(row.get("Tertiary_ICD10_Code",  ""))
+    return any(dx in BH_ICD10_CODES for dx in [dx1, dx2, dx3])
+ 
+pc["Qualifies_BHI"]     = pc.apply(qualifies_for_bhi, axis=1)
+pc["BHI_Was_Submitted"] = pc["CPT_Code_Submitted"] == "99484"
+pc["BHI_Missing"]       = pc["Qualifies_BHI"] & ~pc["BHI_Was_Submitted"]
+ 
+bhi_missing = pc[pc["BHI_Missing"]].copy()
+bhi_missing["Addon_Code"]        = "99484"
+bhi_missing["Addon_Name"]        = "BH Integration Care Mgmt"
+bhi_missing["Potential_Revenue"] = ADDON_RATES["99484"]
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# CHECK 3 — Missing G2211
+# Who: Primary Care visits with a standard E&M code where
+#      the provider is managing ongoing complex conditions
+# Rule: G2211 attaches to 99202-99215 for complexity
+#       We flag any visit with 3 diagnoses as a proxy
+#       for complexity (real analysis needs note review)
+# ─────────────────────────────────────────────────────────────
+ 
+def qualifies_for_g2211(row):
+    """Flag E&M visits with 3 diagnoses as potentially complex."""
+    is_em = row["CPT_Code_Submitted"] in PRIMARY_EM_CODES
+    dx3_present = pd.notna(row.get("Tertiary_ICD10_Code","")) and \
+                  str(row.get("Tertiary_ICD10_Code","")).strip() not in ["","nan"]
+    return is_em and dx3_present
+ 
+pc["Qualifies_G2211"]     = pc.apply(qualifies_for_g2211, axis=1)
+pc["G2211_Was_Submitted"] = pc["CPT_Code_Submitted"] == "G2211"
+pc["G2211_Missing"]       = pc["Qualifies_G2211"] & ~pc["G2211_Was_Submitted"]
+ 
+g2211_missing = pc[pc["G2211_Missing"]].copy()
+g2211_missing["Addon_Code"]        = "G2211"
+g2211_missing["Addon_Name"]        = "Complex Primary Care Add-on"
+g2211_missing["Potential_Revenue"] = ADDON_RATES["G2211"]
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# CHECK 4 — Missing 90833 (Psychotherapy Add-on)
+# Who: Psychiatry visits where BOTH medication management
+#      AND therapy were provided in the same session
+# Rule: Visit type = "Psychotherapy + Med Mgmt" AND
+#       submitted code is a standard E&M, not a therapy code
+# ─────────────────────────────────────────────────────────────
+ 
+psych = df[df["Service_Line"] == "Psychiatry"].copy()
+ 
+def qualifies_for_90833(row):
+    """Flag psych visits where therapy add-on should apply."""
+    is_combined = row["Visit_Type"] == "Psychotherapy + Med Mgmt"
+    is_em_code  = row["CPT_Code_Submitted"] in PSYCH_MED_CODES
+    return is_combined and is_em_code
+ 
+psych["Qualifies_90833"]     = psych.apply(qualifies_for_90833, axis=1)
+psych["90833_Was_Submitted"] = psych["CPT_Code_Submitted"] == "90833"
+psych["90833_Missing"]       = psych["Qualifies_90833"] & ~psych["90833_Was_Submitted"]
+ 
+addon90833_missing = psych[psych["90833_Missing"]].copy()
+addon90833_missing["Addon_Code"]        = "90833"
+addon90833_missing["Addon_Name"]        = "Psychotherapy Add-on"
+addon90833_missing["Potential_Revenue"] = ADDON_RATES["90833"]
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# COMBINE ALL MISSING ADD-ONS INTO ONE TABLE
+# ─────────────────────────────────────────────────────────────
+ 
+keep_cols = [
+    "Visit_ID", "Visit_Date", "Location", "Provider_Name",
+    "Service_Line", "Visit_Type", "CPT_Code_Submitted",
+    "Primary_ICD10_Code", "Primary_Diagnosis",
+    "Secondary_ICD10_Code", "Secondary_Diagnosis",
+    "Visit_Duration_Min", "Payer",
+    "Addon_Code", "Addon_Name", "Potential_Revenue",
+]
+ 
+all_missing = pd.concat([
+    ccm_missing[keep_cols],
+    bhi_missing[keep_cols],
+    g2211_missing[keep_cols],
+    addon90833_missing[keep_cols],
+], ignore_index=True)
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# PRINT RESULTS
+# ─────────────────────────────────────────────────────────────
+ 
+print("=" * 60)
+print("  MISSING ADD-ON CODE SUMMARY")
+print("=" * 60)
+ 
+totals = all_missing.groupby(["Addon_Code", "Addon_Name"]).agg(
+    Visits_Missing = ("Visit_ID",          "count"),
+    Revenue_Lost   = ("Potential_Revenue", "sum"),
+).reset_index().sort_values("Revenue_Lost", ascending=False)
+ 
+print(totals.to_string(index=False))
+print()
+print(f"  TOTAL visits with missing add-on codes : {len(all_missing)}")
+print(f"  TOTAL estimated revenue opportunity    : ${all_missing['Potential_Revenue'].sum():,.0f}")
+print()
+ 
+ 
+print("=" * 60)
+print("  BY PROVIDER — Who is missing add-ons most?")
+print("=" * 60)
+by_provider = all_missing.groupby("Provider_Name").agg(
+    Missing_Addons = ("Visit_ID",          "count"),
+    Revenue_Lost   = ("Potential_Revenue", "sum"),
+).reset_index().sort_values("Revenue_Lost", ascending=False)
+print(by_provider.to_string(index=False))
+print()
+ 
+ 
+print("=" * 60)
+print("  BY LOCATION")
+print("=" * 60)
+by_location = all_missing.groupby("Location").agg(
+    Missing_Addons = ("Visit_ID",          "count"),
+    Revenue_Lost   = ("Potential_Revenue", "sum"),
+).reset_index().sort_values("Revenue_Lost", ascending=False)
+print(by_location.to_string(index=False))
+print()
+ 
+ 
+print("=" * 60)
+print("  BY PAYER — Which insurance has most missed add-ons?")
+print("=" * 60)
+by_payer = all_missing.groupby("Payer").agg(
+    Missing_Addons = ("Visit_ID",          "count"),
+    Revenue_Lost   = ("Potential_Revenue", "sum"),
+).reset_index().sort_values("Revenue_Lost", ascending=False)
+print(by_payer.to_string(index=False))
+print()
+ 
+ 
+print("=" * 60)
+print("  DETAIL — First 20 flagged visits")
+print("=" * 60)
+print(all_missing[[
+    "Visit_ID","Provider_Name","Visit_Type",
+    "CPT_Code_Submitted","Addon_Code","Potential_Revenue"
+]].head(20).to_string(index=False))
+print()
+ 
+ 
+# ─────────────────────────────────────────────────────────────
+# SAVE TO EXCEL
+# ─────────────────────────────────────────────────────────────
+ 
+output_path = "outputs/step4c_addon_results.xlsx"
+ 
+with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+    totals.to_excel(writer,
+        sheet_name="Summary_By_Addon_Code", index=False)
+    by_provider.to_excel(writer,
+        sheet_name="By_Provider",           index=False)
+    by_location.to_excel(writer,
+        sheet_name="By_Location",           index=False)
+    by_payer.to_excel(writer,
+        sheet_name="By_Payer",              index=False)
+    all_missing.to_excel(writer,
+        sheet_name="All_Flagged_Visits",    index=False)
+    ccm_missing[keep_cols].to_excel(writer,
+        sheet_name="CCM_Missing",           index=False)
+    bhi_missing[keep_cols].to_excel(writer,
+        sheet_name="BHI_Missing",           index=False)
+    g2211_missing[keep_cols].to_excel(writer,
+        sheet_name="G2211_Missing",         index=False)
+    addon90833_missing[keep_cols].to_excel(writer,
+        sheet_name="90833_Missing",         index=False)
+ 
+print("=" * 60)
+print(f"  Results saved to: {output_path}")
+print("  Sheets: Summary, By_Provider, By_Location,")
+print("          By_Payer, All_Flagged_Visits,")
+print("          CCM_Missing, BHI_Missing,")
+print("          G2211_Missing, 90833_Missing")
+print("=" * 60)
+ 
