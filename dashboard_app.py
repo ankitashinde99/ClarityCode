@@ -36,7 +36,6 @@ if is_dark:
     INS_BG    = "rgba(0,113,227,0.15)"
     INS_BOR   = "#0071e3"
     HELP_BG   = "#2c2c2e"
-    PROB_BG   = "linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%)"
     BTN_LABEL = "☀️  Light mode"
 else:
     BG        = "#f5f5f7"
@@ -54,7 +53,6 @@ else:
     INS_BG    = "rgba(0,113,227,0.06)"
     INS_BOR   = "#0071e3"
     HELP_BG   = "#f5f5f7"
-    PROB_BG   = "linear-gradient(135deg,#f5f5f7 0%,#ffffff 100%)"
     BTN_LABEL = "🌙  Dark mode"
 
 BLUE  = "#0071e3"
@@ -73,15 +71,17 @@ html, body, [class*="css"] {{
     background-color: {BG} !important;
     color: {TEXT} !important;
 }}
-footer, header {{ visibility: hidden; }}
-#MainMenu {{ visibility: hidden; }}
-.block-container {{ padding: 2rem 2.5rem !important; max-width: 1200px; }}
+footer {{ display: none !important; }}
+#MainMenu {{ visibility: hidden !important; }}
+.block-container {{ padding-top: 1.5rem !important; padding-right: 2.5rem !important; padding-bottom: 2rem !important; }}
 
 [data-testid="stSidebar"] {{
     background: {SIDEBAR} !important;
     border-right: 1px solid {BORDER} !important;
 }}
 [data-testid="stSidebar"] * {{ color: {TEXT} !important; }}
+/* Hide auto-generated MPA nav at top of sidebar */
+[data-testid="stSidebarNav"] {{ display: none !important; }}
 
 [data-testid="metric-container"] {{
     background: {CARD_BG} !important;
@@ -129,19 +129,20 @@ hr {{ border: none !important; border-top: 1px solid {BORDER} !important; margin
 [data-baseweb="tab-panel"] {{ background: transparent !important; }}
 [data-testid="stAlert"] {{ border-radius: 12px !important; }}
 
-.prob-card {{
-    background: {PROB_BG}; border: 1px solid {BORDER};
-    border-radius: 20px; padding: 1.8rem 2.2rem; margin-bottom: 1.5rem;
+.page-header {{
+    border-left: 3px solid {BLUE};
+    padding: 0.15rem 0 0.3rem 1rem;
+    margin-bottom: 0.8rem;
 }}
 .prob-head {{
-    font-size: 1.35rem; font-weight: 600; color: {TEXT};
-    letter-spacing: -0.03em; line-height: 1.35; margin-bottom: 0.7rem;
+    font-size: 1.25rem; font-weight: 600; color: {TEXT};
+    letter-spacing: -0.03em; line-height: 1.4; margin-bottom: 0.45rem;
 }}
-.prob-body {{ font-size: 0.95rem; color: {MUTED}; line-height: 1.75; max-width: 760px; }}
+.prob-body {{ font-size: 0.9rem; color: {MUTED}; line-height: 1.75; max-width: 740px; }}
 .prob-pill {{
     display: inline-block; background: rgba(0,113,227,0.1);
-    color: {BLUE}; border-radius: 20px; padding: 0.2rem 0.8rem;
-    font-size: 0.74rem; font-weight: 500; margin-top: 0.9rem; letter-spacing: 0.02em;
+    color: {BLUE}; border-radius: 20px; padding: 0.18rem 0.75rem;
+    font-size: 0.72rem; font-weight: 500; margin-top: 0.7rem; letter-spacing: 0.02em;
 }}
 .ins-bar {{
     background: {INS_BG}; border-left: 3px solid {INS_BOR};
@@ -220,7 +221,7 @@ def whatis(label, text):
 def prob_card(headline, body, pill=None):
     pill_html = f"<span class='prob-pill'>{pill}</span>" if pill else ""
     st.markdown(f"""
-    <div class='prob-card'>
+    <div class='page-header'>
       <div class='prob-head'>{headline}</div>
       <div class='prob-body'>{body}</div>
       {pill_html}
@@ -301,7 +302,8 @@ df, pc, psych = load_data()
 # ── SIDEBAR ───────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("### ⬡ ClarityCode")
-    st.button(BTN_LABEL, on_click=toggle_theme, use_container_width=True)
+    st.page_link("pages/6_How_It_Works.py", label="How It Works", icon="📖")
+    st.divider()
     st.markdown(f"<div class='nav-lbl'>Navigation</div>", unsafe_allow_html=True)
     page = st.radio("", [
         "Overview",
@@ -309,14 +311,10 @@ with st.sidebar:
         "AI Analysis",
         "Missing Billing Codes",
         "Review Queue",
-        "How It Works",
     ], label_visibility="collapsed")
     st.markdown(f"<div class='nav-lbl'>Filters</div>", unsafe_allow_html=True)
     sel_loc   = st.selectbox("Location",
         ["All locations"] + sorted(df["Location"].unique().tolist()),
-        label_visibility="collapsed")
-    sel_svc   = st.selectbox("Service line",
-        ["All service lines"] + sorted(df["Service_Line"].unique().tolist()),
         label_visibility="collapsed")
     sel_payer = st.selectbox("Insurance",
         ["All payers"] + sorted(df["Payer"].dropna().unique().tolist()),
@@ -326,9 +324,8 @@ with st.sidebar:
 
 def apply_f(data):
     d = data.copy()
-    if sel_loc   != "All locations":     d = d[d["Location"]==sel_loc]
-    if sel_svc   != "All service lines": d = d[d["Service_Line"]==sel_svc]
-    if sel_payer != "All payers":        d = d[d["Payer"]==sel_payer]
+    if sel_loc   != "All locations": d = d[d["Location"]==sel_loc]
+    if sel_payer != "All payers":    d = d[d["Payer"]==sel_payer]
     return d
 
 df_f    = apply_f(df)
@@ -358,10 +355,8 @@ if page == "Overview":
         "Your organization may be losing thousands of dollars every month, without knowing it.",
         "When providers see patients, they submit billing codes that describe the visit. "
         "If those codes are set too low — or qualifying codes are missed entirely — "
-        "insurance pays less than what the visit was worth. This happens silently, "
-        "visit after visit, across every clinic location. "
-        "<br><br><strong>ClarityCode</strong> analyzes your visit data and surfaces exactly where "
-        "billing does not match the care that was delivered — so your team can act on it.",
+        "insurance pays less than what the visit was worth. This happens silently, visit after visit. "
+        "<strong>ClarityCode</strong> surfaces exactly where billing does not match the care delivered — so your team can act on it.",
         pill="Based on CMS 2021 federal billing guidelines"
     )
 
@@ -372,18 +367,32 @@ if page == "Overview":
     c4.metric("Total visits reviewed",   f"{total_visits:,}",    "3 service lines")
 
     st.divider()
-    whatis("Where is the billing problem happening?",
-           "Billing codes describe visit complexity by time:<br>"
-           "• 99211 — 1–9 min &nbsp; ($24)<br>"
-           "• 99212 — 10–19 min ($55)<br>"
-           "• 99213 — 20–29 min ($92)<br>"
-           "• 99214 — 30–39 min ($136)<br>"
-           "• 99215 — 40+ min &nbsp; ($193)<br><br>"
-           "When a 40-min visit is billed as 99213, the $101 difference goes uncollected.")
+    # Scope note
+    loc_label   = sel_loc   if sel_loc   != "All locations" else "all locations"
+    payer_label = sel_payer if sel_payer != "All payers"    else "all payers"
+    st.markdown(f"""
+    <div style='font-size:0.8rem;color:{MUTED};margin-bottom:1rem;
+                border:1px solid {BORDER};border-radius:10px;padding:0.55rem 1rem;
+                display:inline-block;'>
+        📊 &nbsp;Showing all 3 service lines
+        &nbsp;·&nbsp; Location: <strong style='color:{TEXT}'>{loc_label}</strong>
+        &nbsp;·&nbsp; Payer: <strong style='color:{TEXT}'>{payer_label}</strong>
+    </div>""", unsafe_allow_html=True)
+
+    PC = make_plot_cfg(); GR = make_grid()
+
+    whatis("Where is the billing problem happening? (Primary Care E&M)",
+               "Billing codes describe visit complexity by time:<br>"
+               "• 99211 — 1–9 min &nbsp; ($24)<br>"
+               "• 99212 — 10–19 min ($55)<br>"
+               "• 99213 — 20–29 min ($92)<br>"
+               "• 99214 — 30–39 min ($136)<br>"
+               "• 99215 — 40+ min &nbsp; ($193)<br><br>"
+               "When a 40-min visit is billed as 99213, the $101 difference goes uncollected.")
 
     em_codes = ["99211","99212","99213","99214","99215"]
     em_time  = ["1–9 min","10–19 min","20–29 min","30–39 min","40+ min"]
-    pc_em    = df_f[df_f["Service_Line"]=="Primary Care"].copy()
+    pc_em    = pc_f.copy()
 
     def exp(m):
         if pd.isna(m): return None
@@ -399,8 +408,7 @@ if page == "Overview":
     rows = []
     for code, time_label in zip(em_codes, em_time):
         bucket = pc_em[pc_em["Exp"] == code]
-        if len(bucket) == 0:
-            continue
+        if len(bucket) == 0: continue
         em_idx = {c:i for i,c in enumerate(em_codes)}
         correct = under = over = under_gap = 0
         for _, r in bucket.iterrows():
@@ -416,77 +424,75 @@ if page == "Overview":
             "Correctly billed": correct,
             "Billed too low (undercoded)": under,
             "Billed too high (overcoded)": over,
-            "Revenue gap ($)": under_gap, "Total": len(bucket),
+            "Revenue gap ($)": under_gap,
         })
 
-    stacked  = pd.DataFrame(rows)
-    x_labels = [f"{r['Time Range']}<br><sub>{r['Correct code']}</sub>"
-                for _, r in stacked.iterrows()]
-    PC = make_plot_cfg(); GR = make_grid()
-
-    fig_cpt = go.Figure()
-    fig_cpt.add_trace(go.Bar(
-        name="Correctly billed", x=x_labels, y=stacked["Correctly billed"],
-        marker_color=GREEN, marker_opacity=0.85,
-        text=stacked["Correctly billed"],
-        textposition="inside", textfont=dict(size=11, color="#fff"),
-        hovertemplate="<b>%{x}</b><br>Correctly billed: <b>%{y}</b> visits<extra></extra>",
-    ))
-    fig_cpt.add_trace(go.Bar(
-        name="Billed too low", x=x_labels, y=stacked["Billed too low (undercoded)"],
-        marker_color=RED, marker_opacity=0.85,
-        text=stacked["Billed too low (undercoded)"],
-        textposition="inside", textfont=dict(size=11, color="#fff"),
-        customdata=stacked["Revenue gap ($)"],
-        hovertemplate=(
-            "<b>%{x}</b><br>Billed too low: <b>%{y}</b> visits<br>"
-            "Revenue lost: <b>$%{customdata:,.0f}</b><extra></extra>"
-        ),
-    ))
-    fig_cpt.add_trace(go.Bar(
-        name="Billed too high", x=x_labels, y=stacked["Billed too high (overcoded)"],
-        marker_color=AMBER, marker_opacity=0.85,
-        text=stacked["Billed too high (overcoded)"].apply(lambda v: v if v > 0 else ""),
-        textposition="inside", textfont=dict(size=11, color="#fff"),
-        hovertemplate="<b>%{x}</b><br>Billed too high: <b>%{y}</b> visits<extra></extra>",
-    ))
-    fig_cpt.update_layout(
-        barmode="stack", height=400,
-        xaxis=dict(title="Visit duration bucket", tickfont=dict(size=12), **GR),
-        yaxis=dict(title="Number of visits", **GR),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02,
-                    font=dict(size=12), traceorder="reversed"),
-        bargap=0.3, **PC
-    )
-    st.plotly_chart(fig_cpt, use_container_width=True)
-    insight("Each bar = all visits in that time bucket. "
-            "Green = billed correctly. Red = billed too low (revenue lost). "
-            "Amber = billed too high (audit risk). "
-            "Hover any segment to see visit count and revenue impact.")
+    stacked = pd.DataFrame(rows)
+    if stacked.empty:
+        st.info("No Primary Care E&M visits match the current location / payer filters.")
+    else:
+        x_labels = [f"{r['Time Range']} ({r['Correct code']})" for _, r in stacked.iterrows()]
+        fig_cpt = go.Figure()
+        fig_cpt.add_trace(go.Bar(
+            name="Correctly billed", x=x_labels, y=stacked["Correctly billed"],
+            marker_color=GREEN, marker_opacity=0.85,
+            text=stacked["Correctly billed"],
+            textposition="inside", textfont=dict(size=11, color="#fff"),
+            hovertemplate="<b>%{x}</b><br>Correctly billed: <b>%{y}</b> visits<extra></extra>",
+        ))
+        fig_cpt.add_trace(go.Bar(
+            name="Billed too low", x=x_labels, y=stacked["Billed too low (undercoded)"],
+            marker_color=RED, marker_opacity=0.85,
+            text=stacked["Billed too low (undercoded)"],
+            textposition="inside", textfont=dict(size=11, color="#fff"),
+            customdata=stacked["Revenue gap ($)"],
+            hovertemplate="<b>%{x}</b><br>Billed too low: <b>%{y}</b> visits<br>Revenue lost: <b>$%{customdata:,.0f}</b><extra></extra>",
+        ))
+        fig_cpt.add_trace(go.Bar(
+            name="Billed too high", x=x_labels, y=stacked["Billed too high (overcoded)"],
+            marker_color=AMBER, marker_opacity=0.85,
+            text=stacked["Billed too high (overcoded)"].apply(lambda v: v if v > 0 else ""),
+            textposition="inside", textfont=dict(size=11, color="#fff"),
+            hovertemplate="<b>%{x}</b><br>Billed too high: <b>%{y}</b> visits<extra></extra>",
+        ))
+        fig_cpt.update_layout(
+            barmode="stack", height=400,
+            xaxis=dict(title="Visit duration bucket", tickfont=dict(size=12), **GR),
+            yaxis=dict(title="Number of visits", **GR),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, font=dict(size=12), traceorder="reversed"),
+            bargap=0.3, **PC
+        )
+        st.plotly_chart(fig_cpt, use_container_width=True)
+        insight("Each bar = all visits in that time bucket. Green = billed correctly. "
+                "Red = billed too low (revenue lost). Amber = billed too high (audit risk). "
+                "Hover any segment to see visit count and revenue impact.")
 
     st.divider()
     col1, col2 = st.columns(2)
 
+    # compute filter-scoped gap breakdown
     with col1:
         whatis("Where is the money going?",
                "The gap comes from two sources: visits billed at the wrong level, "
                "and billing codes that qualify for extra reimbursement but are never submitted.")
-        fig_d = go.Figure(go.Pie(
-            values=[em_gap, total_addon],
-            labels=["Billed too low", "Missing codes"],
-            hole=0.62,
-            marker=dict(colors=[RED, AMBER], line=dict(color=BG, width=2)),
-            textinfo="percent", textfont=dict(size=12, color="#ffffff"),
-            hovertemplate="<b>%{label}</b><br>$%{value:,.0f}<br>%{percent}<extra></extra>",
-            pull=[0.03, 0.03],
-        ))
-        fig_d.update_layout(
-            showlegend=True,
-            legend=dict(orientation="h", yanchor="top", y=-0.05,
-                        font=dict(size=11), itemsizing="constant"),
-            height=260, **make_plot_cfg(),
-        )
-        st.plotly_chart(fig_d, use_container_width=True)
+        if (em_gap + total_addon) > 0:
+            fig_d = go.Figure(go.Pie(
+                values=[em_gap, total_addon],
+                labels=["Billed too low", "Missing codes"],
+                hole=0.62,
+                marker=dict(colors=[RED, AMBER], line=dict(color=BG, width=2)),
+                textinfo="percent", textfont=dict(size=12, color="#ffffff"),
+                hovertemplate="<b>%{label}</b><br>$%{value:,.0f}<br>%{percent}<extra></extra>",
+                pull=[0.03, 0.03],
+            ))
+            fig_d.update_layout(
+                showlegend=True,
+                legend=dict(orientation="h", yanchor="top", y=-0.05, font=dict(size=11), itemsizing="constant"),
+                height=260, **make_plot_cfg(),
+            )
+            st.plotly_chart(fig_d, use_container_width=True)
+        else:
+            st.info("No revenue gap data for current filters.")
         insight("Missing billing codes (amber) are often the bigger problem — "
                 "these are legitimate charges that qualify but are simply never submitted.")
 
@@ -502,12 +508,11 @@ if page == "Overview":
             marker=dict(colors=[BLUE, "#5ac8fa", GREEN], line=dict(color=BG, width=2)),
             textinfo="percent", textfont=dict(size=12, color="#ffffff"),
             hovertemplate="<b>%{label}</b><br>%{value} visits (%{percent})<extra></extra>",
-            pull=[0.03, 0.03, 0.03],
+            pull=[0.03]*len(sl),
         ))
         fig_sl.update_layout(
             showlegend=True,
-            legend=dict(orientation="h", yanchor="top", y=-0.05,
-                        font=dict(size=11), itemsizing="constant"),
+            legend=dict(orientation="h", yanchor="top", y=-0.05, font=dict(size=11), itemsizing="constant"),
             height=260, **make_plot_cfg(),
         )
         st.plotly_chart(fig_sl, use_container_width=True)
@@ -517,9 +522,10 @@ if page == "Overview":
     st.divider()
     whatis("If nothing changes, how much is at stake?",
            "Slide to your actual monthly visit volume to see how the gap compounds annually.")
-    monthly = st.slider("Monthly visits across all locations", 100, 3000, 500, step=50)
-    p_em    = monthly * 0.304 * 50 * 12
-    p_addon = monthly * (total_addon/max(total_visits,1)) * 12
+    monthly  = st.slider("Monthly visits across all locations", 100, 3000, 500, step=50)
+    base_vis = max(total_visits, 1)
+    p_em     = monthly * (em_gap / base_vis) * 12
+    p_addon  = monthly * (total_addon / base_vis) * 12
     p1,p2,p3 = st.columns(3)
     p1.metric("Annual gap — billing level",  f"${p_em:,.0f}")
     p2.metric("Annual gap — missing codes",  f"${p_addon:,.0f}")
@@ -791,7 +797,7 @@ elif page == "Missing Billing Codes":
     fig_add = go.Figure(go.Bar(
         x=add_df["Uncollected ($)"], y=add_df["Billing code"],
         orientation="h",
-        marker_color=[GREEN, AMBER, AMBER, RED][::-1],
+        marker_color=[GREEN, AMBER, AMBER, RED],
         marker_opacity=0.88,
         text=add_df["Uncollected ($)"].apply(lambda x: f"${x:,.0f}"),
         textposition="outside", textfont=dict(size=12, color=FONT_C),
@@ -890,230 +896,3 @@ elif page == "Review Queue":
     st.download_button("⬇️  Download review list as CSV", data=csv,
                        file_name="billing_review_queue.csv", mime="text/csv")
 
-# ══════════════════════════════════════════════════════════════
-# PAGE 6 — HOW IT WORKS
-# ══════════════════════════════════════════════════════════════
-elif page == "How It Works":
-    st.title("How ClarityCode works")
-    prob_card(
-        "Transparent analysis. Every finding has a documented reason.",
-        "ClarityCode does not make changes to any billing records. It analyzes visit data, "
-        "surfaces potential discrepancies, and presents them for human review. "
-        "Every flag in this dashboard has a specific, documented reason tied to a "
-        "federal billing guideline — not a black-box algorithm."
-    )
-
-    # ── DATASETS ──────────────────────────────────────────────
-    whatis("What data was analyzed?",
-           "Two datasets were used. The main EHR extract powers all rule-based analysis. "
-           "A separate SOAP note dataset was used for AI and NLP analysis.")
-
-    d1, d2 = st.columns(2)
-    with d1:
-        st.markdown(f"""
-        <div class='info-card'>
-          <div class='info-label'>Dataset 1 — Main EHR Extract</div>
-          <div class='info-value'>250 visits</div>
-          <div class='info-body'>
-            34 data fields per visit<br>
-            3 service lines: Primary Care, Behavioral Health, Psychiatry<br>
-            7 New York clinic locations<br>
-            10 providers · Multiple insurance payers<br><br>
-            <strong style='color:{TEXT};'>Powers:</strong> Overview, Provider Insights,
-            Missing Billing Codes, Review Queue
-          </div>
-        </div>""", unsafe_allow_html=True)
-    with d2:
-        st.markdown(f"""
-        <div class='info-card'>
-          <div class='info-label'>Dataset 2 — SOAP Note Dataset</div>
-          <div class='info-value'>50 visits</div>
-          <div class='info-body'>
-            Full clinical notes per visit (Subjective · Objective · Assessment · Plan)<br>
-            Realistic lab values, medications, referrals documented<br>
-            Visit time and complexity explicitly noted<br>
-            Same providers and locations as Dataset 1<br><br>
-            <strong style='color:{TEXT};'>Powers:</strong> AI Analysis page only
-          </div>
-        </div>""", unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── PIPELINE ──────────────────────────────────────────────
-    whatis("How the analysis was built — step by step",
-           "ClarityCode uses three layers of analysis, each more sophisticated "
-           "than the last. Every layer runs independently and results are "
-           "cross-referenced to find the strongest evidence.")
-
-    steps = [
-        {
-            "num": "01",
-            "title": "E&M undercode detection",
-            "dataset": "Main EHR extract · 102 Primary Care visits",
-            "method": "CMS 2021 time-based thresholds",
-            "body": (
-                "Federal CMS 2021 guidelines define exactly how long a visit must be "
-                "to justify each billing code. ClarityCode compared every Primary Care "
-                "visit's documented duration against these thresholds and flagged any "
-                "visit where the submitted code was lower than the duration supports. "
-                "Revenue gap calculated using Medicare average reimbursement rates."
-            ),
-            "findings": "31 visits undercoded · 30.4% undercode rate · $1,540 revenue gap",
-            "detail": "99211 (1–9 min) · 99212 (10–19 min) · 99213 (20–29 min) · 99214 (30–39 min) · 99215 (40+ min)",
-        },
-        {
-            "num": "02",
-            "title": "Missing add-on code detection",
-            "dataset": "Main EHR extract · 250 visits across all service lines",
-            "method": "Diagnosis and visit type matching against CMS qualifying criteria",
-            "body": (
-                "Four add-on billing codes were checked against every visit. "
-                "Each code has specific qualifying criteria — chronic condition count, "
-                "behavioral health diagnosis presence, visit type, or complexity level. "
-                "Any visit meeting the criteria but missing the corresponding code was flagged. "
-                "Self-pay patients were excluded as these are insurance-only codes."
-            ),
-            "findings": "76 visits with missing add-on codes · $3,279 total unclaimed",
-            "detail": "99490 CCM ($62/month) · 99484 BHI ($45) · G2211 Complex Care ($16) · 90833 Therapy Add-on ($65)",
-        },
-        {
-            "num": "03",
-            "title": "AI clinical note analysis",
-            "dataset": "SOAP note dataset · 50 visits with full clinical notes",
-            "method": "Claude Haiku AI model acting as a certified professional coder",
-            "body": (
-                "Each SOAP note was sent to the Claude AI model (Anthropic) with a detailed "
-                "system prompt instructing it to apply CMS 2021 Medical Decision Making (MDM) "
-                "rules exactly as a certified coder would. Claude analyzed the documented number "
-                "of problems addressed, data reviewed, risk level, and total visit time to "
-                "recommend the correct billing code — independently of what the provider submitted. "
-                "Results returned as structured JSON and saved to Excel."
-            ),
-            "findings": "30 billed too low (62%) · 10 correctly billed (25%) · 6 billed too high (12%) · $1,545 identified",
-            "detail": "Model: claude-haiku-4-5 · Both MDM and time-based pathways used · Cost: ~$0.20 for 50 visits",
-        },
-        {
-            "num": "04",
-            "title": "NLP clinical complexity scoring",
-            "dataset": "SOAP note dataset · 50 visits",
-            "method": "Regex-based NLP signal extraction + weighted scoring model",
-            "body": (
-                "Six clinical signals were extracted from each SOAP note using natural "
-                "language processing: number of problems addressed, lab tests reviewed, "
-                "medication changes made, specialist referrals placed, patient education "
-                "documented, and visit time explicitly stated. Each signal contributed "
-                "to a weighted complexity score from 0 to 100. The score was then mapped "
-                "to the appropriate billing code using CMS MDM thresholds. Visits flagged "
-                "by both AI and NLP represent the highest-confidence findings."
-            ),
-            "findings": "Score range 30–94 · Average 68/100 · Scores available as ML model features",
-            "detail": "Problems (30pts) · Labs (20pts) · Risk language (20pts) · Time (15pts) · Referrals (10pts) · Education (5pts)",
-        },
-    ]
-
-    for step in steps:
-        with st.expander(f"Step {step['num']} — {step['title']}"):
-            s1, s2 = st.columns([3, 2])
-            with s1:
-                st.markdown(
-                    f"<p style='color:{MUTED};font-size:0.8rem;margin-bottom:0.7rem;'>"
-                    f"📂 {step['dataset']}</p>", unsafe_allow_html=True)
-                st.markdown(
-                    f"<p style='color:{TEXT};font-size:0.92rem;line-height:1.75;'>"
-                    f"{step['body']}</p>", unsafe_allow_html=True)
-            with s2:
-                st.markdown(f"""
-                <div class='info-card'>
-                  <div class='info-label'>Method</div>
-                  <div style='font-size:0.82rem;color:{TEXT};margin-bottom:0.8rem;'>{step["method"]}</div>
-                  <div class='info-label'>Key findings</div>
-                  <div style='font-size:0.82rem;color:{GREEN};margin-bottom:0.8rem;'>{step["findings"]}</div>
-                  <div class='info-label'>Codes / details</div>
-                  <div style='font-size:0.78rem;color:{MUTED};'>{step["detail"]}</div>
-                </div>""", unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── COMBINED RESULTS ──────────────────────────────────────
-    whatis("Combined findings across all methods",
-           "When multiple methods flag the same visit, that is the strongest evidence. "
-           "Two methods agreeing is nearly impossible to dispute in a billing review.")
-
-    r1,r2,r3,r4 = st.columns(4)
-    r1.metric("Total visits analyzed",   "300",      "250 EHR + 50 SOAP notes")
-    r2.metric("Total revenue gap found", "$4,819",   "Rule-based analysis")
-    r3.metric("AI gap identified",       "$1,545",   "50 SOAP notes reviewed")
-    r4.metric("Projected annual gap",    "$76,000+", "At 500 visits/month")
-
-    st.divider()
-
-    # ── TECH STACK ────────────────────────────────────────────
-    whatis("Technology used to build this",
-           "Every tool used is open source or pay-per-use. "
-           "No vendor contracts. No proprietary software.")
-
-    t1,t2,t3 = st.columns(3)
-    with t1:
-        st.markdown(f"""
-        <div class='tech-card'>
-          <div class='info-label'>Data & Analysis</div>
-          <div style='font-size:0.85rem;color:{TEXT};line-height:2;'>
-            Python 3.13<br>pandas · openpyxl<br>
-            Regex NLP signal extraction<br>
-            scikit-learn (ML ready)
-          </div>
-        </div>""", unsafe_allow_html=True)
-    with t2:
-        st.markdown(f"""
-        <div class='tech-card'>
-          <div class='info-label'>AI Layer</div>
-          <div style='font-size:0.85rem;color:{TEXT};line-height:2;'>
-            Claude Haiku (Anthropic API)<br>
-            Prompt engineering<br>
-            JSON structured output<br>
-            ~$0.003 per visit analyzed
-          </div>
-        </div>""", unsafe_allow_html=True)
-    with t3:
-        st.markdown(f"""
-        <div class='tech-card'>
-          <div class='info-label'>Dashboard & Deployment</div>
-          <div style='font-size:0.85rem;color:{TEXT};line-height:2;'>
-            Streamlit · Plotly<br>
-            GitHub version control<br>
-            Streamlit Cloud (free hosting)<br>
-            Provider reports via docx.js
-          </div>
-        </div>""", unsafe_allow_html=True)
-
-    st.divider()
-
-    # ── LIMITATIONS ───────────────────────────────────────────
-    st.markdown("#### Before acting on any finding")
-    st.warning("""
-- This analysis identifies **potential** billing discrepancies — it does not confirm them
-- Every flagged visit must be reviewed by a **certified medical coder** before any claim is modified
-- Reimbursement estimates use **Medicare average rates** — contracted rates with each insurer will differ
-- **Self-pay patients** must be excluded from Chronic Care Management and G2211 recommendations
-- This dashboard currently runs on **synthetic data** — no real patient information is used
-- The AI analysis is a **second opinion**, not a replacement for human clinical judgment
-""")
-
-    st.divider()
-
-    # ── REFERENCES ────────────────────────────────────────────
-    st.markdown("#### Official sources")
-    for name, url in {
-        "CMS 2021 E&M Office Visit Guidelines": "https://www.cms.gov/medicare/physician-fee-schedule/2021-office-outpatient-evaluation-and-management",
-        "Medicare Physician Fee Schedule": "https://www.cms.gov/medicare/payment/fee-schedules/physician",
-        "Chronic Care Management (99490) billing guide": "https://www.cms.gov/outreach-and-education/medicare-learning-network-mln/mlnproducts/downloads/chroniccaremanagement.pdf",
-        "AAPC CPT code reference": "https://www.aapc.com/codes/",
-        "ICD-10-CM diagnosis code browser": "https://icd.cdc.gov/icd10cm/",
-        "OIG compliance work plan": "https://oig.hhs.gov/reports-and-publications/workplan/",
-        "Anthropic Claude API": "https://docs.anthropic.com",
-    }.items():
-        st.markdown(f"- [{name}]({url})")
-
-    st.markdown("---")
-    st.caption("ClarityCode v2.0 · Built by Ankita Shinde · Health Systems Product Manager · "
-               "Synthetic data only · github.com/ankitashinde99/coding-intelligence")
